@@ -1,3 +1,2 @@
-web: gunicorn runp-heroku:app
-init: python db_create.py
-upgrade: python db_upgrade.py
+web: gunicorn project-heroku:app
+init: python database_setup.py
