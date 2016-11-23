@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+
+
+{% block content %}
+
+
+
+<h2>Here are advices</h2>
+
+{% for advice in advices %}
+
+<br>
+<strong>{{advice.title}}</strong>
+<br>
+	{{advice.body}}
+<br>
+<a href="{{url_for('editAdvice', category_id = advice.category_id,advice_id = advice.id)}}">Edit</a> 
+<a href="{{url_for('deleteAdvice', category_id = advice.category_id,advice_id = advice.id)}}">Delete</a> 
+
+{% endfor %}
+
+{% endblock %}
