@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for,flash, make_response
+from flask import Flask, render_template, request, redirect, url_for,flash, make_response,jsonify
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
 from database_setup import Base, Category, Advice
@@ -146,7 +146,21 @@ def gdisconnect():
     	response.headers['Content-Type'] = 'application/json'
     	return response
 
+@app.route('/categories/<int:category_id>/advice/JSON')
+def categoryJSON(category_id):
+    category = session.query(Category).filter_by(id=category_id).one()
+    advices = session.query(Advice).filter_by(category_id=category_id).all()
+    return jsonify(Advices=[i.serialize for i in advices])
 
+@app.route('/categories/<int:category_id>/advices/<int:advice_id>/one/JSON')
+def categoryAdviceJSON(category_id, advice_id):
+	advice = session.query(Advice).filter_by(category_id = category_id, id = advice_id).one()
+	return jsonify(Advice = advice.serialize)
+
+@app.route('/allcategories/JSON')
+def allCategoriesJSON():
+	categories = session.query(Category).order_by(Category.name.asc()).all()
+	return jsonify(categories = [c.serialize for c in categories])
 
 @app.route('/')
 @app.route('/allcategories')
@@ -154,10 +168,10 @@ def allCategories():
 	categories = session.query(Category).order_by(Category.name.asc()).all()
 	return render_template('allCategories.html', categories = categories)
 
-@app.route('/alladvices')
-def allAdvices():
-	advices = session.query(Advice).order_by(Advice.title.asc()).all()
-	return render_template('allAdvices.html', advices = advices)
+#@app.route('/alladvices')
+#def allAdvices():
+#	advices = session.query(Advice).order_by(Advice.title.asc()).all()
+#	return render_template('allAdvices.html', advices = advices)
 
 @app.route('/category/new', methods = ['GET', 'POST'])
 def newCategory():
@@ -218,6 +232,11 @@ def newAdvice(category_id):
 			return redirect(url_for('category', category_id = category_id))
 	else:
 		return render_template('newAdvice.html', category_id = category_id)
+
+@app.route('/categories/<int:category_id>/advices/<int:advice_id>/one', methods = ['GET', 'POST'])
+def oneAdvice(category_id, advice_id):
+	advice = session.query(Advice).filter_by(category_id = category_id, id = advice_id).one()
+	return render_template('advice.html', advice = advice)
 
 @app.route('/categories/<int:category_id>/advices/<int:advice_id>/delete', methods = ['GET', 'POST'])
 def deleteAdvice(category_id, advice_id):
