@@ -219,10 +219,12 @@ def newCategory():
 def category(category_id):
 	advices = session.query(Advice).filter_by(category_id = category_id).order_by(Advice.title.asc()).all()
 	category = session.query(Category).filter_by(id = category_id).one()
-	if 'username' not in login_session:
-		return render_template('publiccategory.html', category = category, advices = advices)
+	creator = getUserInfo(category.user_id)
+
+	if 'username' not in login_session or creator.id != login_session['user_id']:
+		return render_template('publiccategory.html', category = category, advices = advices, creator = creator)
 	else:
-		return render_template('category.html',category = category, advices = advices)
+		return render_template('category.html',category = category, advices = advices, creator = creator)
 
 @app.route('/categories/<int:category_id>/edit', methods = ['GET', 'POST'])
 def editCategory(category_id):
@@ -300,4 +302,4 @@ def editAdvice(category_id, advice_id):
 if __name__ == '__main__':
 	app.secret_key = "super_secret_key"
 	app.debug = True
-	app.run(host='0.0.0.0',port = 5000)
+	app.run(host='localhost',port = 5000)
