@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+
+
+{%block content%}
+<h3>Advices in {{category.name}}</h3>
+<a href="{{url_for('newAdvice', category_id = category.id)}}"> New Advice</a>
+
+{% for advice in advices %}
+<br>
+<strong>{{advice.title}}</strong>
+<br>
+	{{advice.body}}
+<br>
+
+{% endfor %}
+{%endblock%}

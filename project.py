@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for,flash, make_response,jsonify
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
-from database_setup import Base, Category, Advice
+from database_setup import Base, Category, Advice, User
 
 from flask import session as login_session
 import random, string
@@ -14,7 +14,7 @@ import requests
 
 CLIENT_ID = json.loads(open('client_secrets.json').read())['web']['client_id']
 
-engine = create_engine('sqlite:///categoryadvice.db')
+engine = create_engine('sqlite:///categoryadviceuser.db')
 Base.metadata.bind = engine
 DBSession = sessionmaker(bind = engine)
 session = DBSession()
@@ -78,7 +78,7 @@ def gconnect():
         response.headers['Content-Type'] = 'application/json'
         return response
 
-    stored_access_token = login_session.get('access_token')
+    stored_access_token = login_session.get('credentials')
     stored_gplus_id = login_session.get('gplus_id')
     if stored_access_token is not None and gplus_id == stored_gplus_id:
         response = make_response(json.dumps('Current user is already connected.'),
@@ -87,7 +87,7 @@ def gconnect():
         return response
 
     # Store the access token in the session for later use.
-    login_session['access_token'] = credentials.access_token
+    login_session['credentials'] = credentials.access_token
     login_session['gplus_id'] = gplus_id
 
     # Get user info
@@ -101,6 +101,13 @@ def gconnect():
     login_session['picture'] = data['picture']
     login_session['email'] = data['email']
 
+    # see if user exists if not make a user
+    user_id = getUserID(login_session['email'])
+    if not user_id:
+    	user_id = createUser(login_session)
+    login_session['user_id'] = user_id
+
+
     output = ''
     output += '<h1>Welcome, '
     output += login_session['username']
@@ -112,39 +119,57 @@ def gconnect():
     print "done!"
     return output
 
-    # DISCONNECT - Revoke a current user's token and reset their login_session
+def createUser(login_session):
+	newUser = User(name=login_session['username'],email = login_session['email'], picture = login_session['picture'])
+	session.add(newUser)
+	session.commit()
+	user = session.query(User).filter_by(email = login_session['email']).one()
+	return user.id
 
+def getUserInfo(user_id):
+	user = session.query(User).filter_by(id = user_id).one()
+	return user
+
+def getUserID(email):
+	try:
+		user = session.query(User).filter_by(email = email).one()
+		return user.id
+	except:
+		return None
+
+    # DISCONNECT - Revoke a current user's token and reset their login_session
 
 @app.route('/gdisconnect')
 def gdisconnect():
-    access_token = login_session['access_token']
-    print 'In gdisconnect access token is %s', access_token
-    print 'User name is: ' 
-    print login_session['username']
-    if access_token is None:
- 	print 'Access Token is None'
-    	response = make_response(json.dumps('Current user not connected.'), 401)
-    	response.headers['Content-Type'] = 'application/json'
-    	return response
-    url = 'https://accounts.google.com/o/oauth2/revoke?token=%s' % login_session['access_token']
+        # Only disconnect a connected user.
+    credentials = login_session.get('credentials')
+    if credentials is None:
+        response = make_response(
+            json.dumps('Current user not connected.'), 401)
+        response.headers['Content-Type'] = 'application/json'
+        return response
+    access_token =  login_session.get('credentials')
+    url = 'https://accounts.google.com/o/oauth2/revoke?token=%s' % access_token
     h = httplib2.Http()
     result = h.request(url, 'GET')[0]
-    print 'result is '
-    print result
+
     if result['status'] == '200':
-	del login_session['access_token'] 
-    	del login_session['gplus_id']
-    	del login_session['username']
-    	del login_session['email']
-    	del login_session['picture']
-    	response = make_response(json.dumps('Successfully disconnected.'), 200)
-    	response.headers['Content-Type'] = 'application/json'
-    	return response
+        # Reset the user's sesson.
+        del login_session['credentials']
+        del login_session['gplus_id']
+        del login_session['username']
+        del login_session['email']
+        del login_session['picture']
+
+        response = make_response(json.dumps('Successfully disconnected.'), 200)
+        response.headers['Content-Type'] = 'application/json'
+        return response
     else:
-	
-    	response = make_response(json.dumps('Failed to revoke token for given user.', 400))
-    	response.headers['Content-Type'] = 'application/json'
-    	return response
+        # For whatever reason, the given token was invalid.
+        response = make_response(
+            json.dumps('Failed to revoke token for given user.', 400))
+        response.headers['Content-Type'] = 'application/json'
+        return response
 
 @app.route('/categories/<int:category_id>/advice/JSON')
 def categoryJSON(category_id):
@@ -166,7 +191,10 @@ def allCategoriesJSON():
 @app.route('/allcategories')
 def allCategories():
 	categories = session.query(Category).order_by(Category.name.asc()).all()
-	return render_template('allCategories.html', categories = categories)
+	if 'username' not in login_session:
+		return render_template('publicallCategories.html', categories = categories)
+	else:
+		return render_template('allCategories.html', categories = categories)
 
 #@app.route('/alladvices')
 #def allAdvices():
@@ -179,7 +207,7 @@ def newCategory():
 		return redirect('/login')
 	if request.method == 'POST':
 		if request.form['name']:
-			newCat = Category(name = request.form['name'])
+			newCat = Category(name = request.form['name'], user_id = login_session['user_id'])
 			session.add(newCat)
 			session.commit()
 			return redirect(url_for('allCategories'))
@@ -191,7 +219,10 @@ def newCategory():
 def category(category_id):
 	advices = session.query(Advice).filter_by(category_id = category_id).order_by(Advice.title.asc()).all()
 	category = session.query(Category).filter_by(id = category_id).one()
-	return render_template('category.html',category = category, advices = advices)
+	if 'username' not in login_session:
+		return render_template('publiccategory.html', category = category, advices = advices)
+	else:
+		return render_template('category.html',category = category, advices = advices)
 
 @app.route('/categories/<int:category_id>/edit', methods = ['GET', 'POST'])
 def editCategory(category_id):
@@ -226,7 +257,7 @@ def newAdvice(category_id):
 		return redirect('/login')
 	if request.method == 'POST':
 		if request.form['title'] and request.form['body']:
-			newAd = Advice(title = request.form['title'], body = request.form['body'], category_id = category_id)
+			newAd = Advice(title = request.form['title'], body = request.form['body'], category_id = category_id, user_id = login_session['user_id'])
 			session.add(newAd)
 			session.commit()
 			return redirect(url_for('category', category_id = category_id))
